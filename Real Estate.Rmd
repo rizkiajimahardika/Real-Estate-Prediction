@@ -1,0 +1,162 @@
+---
+title: "Real Estate Price Prediction"
+author: "Rizki Aji Mahardika"
+date: "5/28/2022"
+output: 
+  html_document :
+    number_sections: true
+    toc: true
+    toc_depth: 3
+    toc_float:
+      collapsed: false
+    df_print: paged
+    theme: united
+    highlight: breezedark
+  pdf_document:
+    latex_engine: xelatex
+---
+```{r echo=FALSE, out.width = "30%"}
+knitr::include_graphics("data/real_estate.jpg")
+```
+
+# Intro
+The following is an analysis of the real estate dataset. In this analysis, we will predict the price of real estate using linear regression analysis.
+
+## Load Library and Dataset
+```{r, warning=FALSE, message=FALSE}
+library(dplyr)
+library(ggplot2)
+library(GGally)
+library(MLmetrics)
+library(performance)
+library(lmtest)
+library(car)
+```
+
+```{r}
+real_estate <- read.csv("data/Real_estate.csv")
+```
+
+
+# Explanatory Data Analysis
+We want to see top 10 data in this dataset
+```{r}
+head(real_estate,10)
+```
+Then, we want to change the column names to make it easier to understand
+```{r}
+real_estate <- real_estate %>% 
+  rename(transaction_date = X1.transaction.date,
+         house_age = X2.house.age,
+         distance_to_the_nearest_MRT_station = X3.distance.to.the.nearest.MRT.station,
+         number_of_convenience_stores = X4.number.of.convenience.stores,
+         latitude = X5.latitude,
+         longitude = X6.longitude,
+         house_price_of_unit_area = Y.house.price.of.unit.area)
+```
+Next, we want to explain and check data types in every column
+```{r}
+str(real_estate)
+```
+The following is a description of each column :
+`No` : Record number of data
+`transaction_date` : Date of transaction
+`house_age` : Age of house
+`Distance_to_the_nearest_MRT_station` : Distance from house to nearest MRT station
+`number_of_convenience_stores` : Number of convenience stores
+`latitude` : Latitude of house
+`longitude` : Longitude of house
+`house_price_of_unit_area` : House price of unit area
+The data types contained in each column are appropriate.
+
+
+After that, we check the number of missing values contained in this data
+```{r}
+colSums(is.na(real_estate))
+
+```
+Great, this data no have missing values. Then we take the column that we want to do data analysis
+
+```{r}
+real_estate <- real_estate %>% select(-No,-transaction_date)
+```
+
+We want to see the correlation between the columns contained in this dataset
+```{r}
+ggcorr(real_estate, label = T)
+
+```
+
+In the correlation graph, it can be seen that the variables longitude, latitude, and number_of_convenience_stores have a positive correlation with house_price_of_unit_area. While the distance_to_the_nearest_MRT_station and house age variables have a negative correlation with house_price_of_unit_area
+
+
+# Linear Regression Modeling
+The next stage we will make linear regression modeling with the predictor variable number_of_convenience_stores, because this variable has the highest positive correlation to the target variable house_price_of_unit_area
+```{r}
+model_one_pred <- lm(formula = house_price_of_unit_area~number_of_convenience_stores, data = real_estate) # Model with one prediction
+summary(model_one_pred)
+```
+It can be seen that the adjusted R-squared has a value of 0.3244.
+
+Next, we will try to select predictor variables automatically using step-wise regression with the backward-elimination method. First, we have to create a model with all prediction variables
+```{r}
+model_all_pred <- lm(formula = house_price_of_unit_area~., data = real_estate)
+summary(model_all_pred)
+```
+Then we create a backward-elimination model to the model_backward object
+```{r}
+model_backward <- step(model_all_pred, direction = "backward", trace = 0)
+summary(model_backward)
+```
+Model Interpretation :
+
+1. Significant predictor variables: All variables have a significant effect
+
+2. Goodness of fit (adj r-squared): 56% of the price variation can be explained by this model
+
+
+After that we create a new regression model formula into the model_new object
+```{r}
+model_new <- lm(formula = house_price_of_unit_area ~ house_age + distance_to_the_nearest_MRT_station + 
+    number_of_convenience_stores + latitude, data = real_estate)
+```
+After that, we see the prediction results using interval prediction with 95% level
+```{r}
+predict <- predict(object = model_new, newdata = real_estate, interval = "prediction", level = 0.95)
+head(predict, 10)
+```
+Finally, we test the performance of the linear regression model by checking the RMSE value and comparing it with the target variable, namely house_price_of_unit_area
+```{r}
+RMSE(model_new$fitted.values, real_estate$house_price_of_unit_area)
+```
+
+```{r}
+summary(real_estate$house_price_of_unit_area)
+```
+RMSE is quite small compared to the range of house_price (the model is already relatively good)
+
+
+# Assumptions
+
+## Normality of Residual
+```{r}
+shapiro.test(model_new$residuals)
+```
+P-value < 0.05, it indicates that we reject the HO and it means that the residuals/errors in the prediction results are not normally distributed
+
+## Homoscedasticity of Residual
+
+```{r}
+bptest(model_new)
+```
+Because p-value > alpha, it means that the error variance spreads randomly or is constant (homoscedasticity)
+
+## No Multicolinearity
+```{r}
+vif(model_new)
+```
+None of the predictor variables have multicollinearity
+
+
+# Conclusions
+The linear regression model with house_age, distance_to_the_nearest_MRT_station, number_of_convenience_stores, and latitude predictors is good enough because it has a relatively small error (RMSE), but adj. R squared is still not very good because it only has a percentage of 56%.
